@@ -7,7 +7,7 @@ import Link from "next/link";
 import type { IAgoraRTCClient, ILocalAudioTrack } from "agora-rtc-sdk-ng";
 import { agora } from "./stt-message";
 import type { CareReport } from "@/lib/types";
-import { saveReport } from "@/lib/types";
+import { saveReport, loadReports } from "@/lib/types";
 
 type ReportField = { label: string; value: string | null; color?: "indigo" | "amber" | "rose" | "green" };
 
@@ -43,6 +43,8 @@ export default function RecordPage() {
     const [transcript, setTranscript] = useState("");
     const [sttError, setSttError] = useState<string | null>(null);
     const [savedReport, setSavedReport] = useState<CareReport | null>(null);
+    // Previous reports for this patient, loaded from localStorage on mount
+    const [previousReports, setPreviousReports] = useState<CareReport[]>([]);
 
     const clientRef = useRef<IAgoraRTCClient | null>(null);
     const micRef = useRef<ILocalAudioTrack | null>(null);
@@ -182,6 +184,8 @@ export default function RecordPage() {
                     transcript: finalTranscript,
                     patientName: report.patientName,
                     patientRoom,
+                    // Pass last 3 reports as historical context for the AI
+                    previousReports: previousReports.slice(0, 3),
                 }),
             });
 
@@ -231,6 +235,14 @@ export default function RecordPage() {
     };
 
     useEffect(() => {
+        // Load this patient's previous reports (newest-first, max 5 for context)
+        const all = loadReports();
+        const mine = all.filter(r =>
+            (patientId && r.patientId === patientId) ||
+            (!patientId && r.patientName === (patientName ?? ""))
+        ).slice(0, 5);
+        setPreviousReports(mine);
+
         return () => {
             stopAgoraSTT();
             stopAgora();
@@ -316,9 +328,11 @@ export default function RecordPage() {
         );
     }
 
+    const lastReport = previousReports[0] ?? null;
+
     // ── RECORD SCREEN ─────────────────────────────────────────────────────────
     return (
-        <div className="flex flex-col h-[calc(100vh-140px)] relative">
+        <div className="flex flex-col overflow-y-auto" style={{ minHeight: "calc(100vh - 140px)" }}>
             {/* Back link */}
             <Link
                 href={patientName ? "/patients" : "/"}
@@ -330,7 +344,7 @@ export default function RecordPage() {
 
             {/* Patient context banner */}
             {patientName && (
-                <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl px-4 py-3 mb-6 shrink-0">
+                <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl px-4 py-3 mb-4 shrink-0">
                     <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center shrink-0">
                         <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     </div>
@@ -340,6 +354,46 @@ export default function RecordPage() {
                         {patientRoom && <p className="text-xs text-gray-500">Room {patientRoom}</p>}
                     </div>
                 </div>
+            )}
+
+            {/* Previous log card */}
+            {lastReport && (
+                <details className="mb-4 group shrink-0" open>
+                    <summary className="flex items-center justify-between cursor-pointer list-none bg-white/60 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl px-4 py-3 select-none hover:bg-white/80 dark:hover:bg-white/8 transition-colors">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-purple-500 shrink-0" />
+                            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Previous Log</span>
+                            <span className="text-xs text-gray-400 truncate ml-1">
+                                · {new Date(lastReport.timestamp).toLocaleDateString([], { month: "short", day: "numeric" })}
+                                {" "}
+                                {new Date(lastReport.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                        </div>
+                        <span className="text-xs text-gray-400 group-open:rotate-180 transition-transform ml-2 shrink-0">▾</span>
+                    </summary>
+
+                    <div className="mt-1 bg-white/60 dark:bg-white/5 border border-gray-200 dark:border-white/10 border-t-0 rounded-b-2xl px-4 pb-4 pt-3 space-y-2">
+                        {[
+                            { label: "Food", value: lastReport.foodIntake },
+                            { label: "Medication", value: lastReport.medication },
+                            { label: "Vital Signs", value: lastReport.vitalSigns },
+                            { label: "Mobility", value: lastReport.mobility },
+                            { label: "Mood", value: lastReport.mood },
+                            { label: "Observations", value: lastReport.observations },
+                            { label: "Follow-up", value: lastReport.followUp },
+                        ].filter(f => f.value).map(f => (
+                            <div key={f.label} className="flex gap-6 text-sm">
+                                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-20 shrink-0 pt-0.5">{f.label}</span>
+                                <span className="text-gray-700 dark:text-gray-300 leading-relaxed">{f.value}</span>
+                            </div>
+                        ))}
+                        {previousReports.length > 1 && (
+                            <p className="text-xs text-gray-400 pt-1">
+                                +{previousReports.length - 1} older log{previousReports.length > 2 ? "s" : ""} will be used as AI context.
+                            </p>
+                        )}
+                    </div>
+                </details>
             )}
 
             <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center pb-20">
@@ -362,13 +416,12 @@ export default function RecordPage() {
                     <button
                         onClick={toggleRecording}
                         disabled={isProcessing}
-                        className={`relative z-10 w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl active:scale-95 ${
-                            isProcessing
-                                ? "bg-gray-100 dark:bg-white/10"
-                                : isRecording
+                        className={`relative z-10 w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl active:scale-95 ${isProcessing
+                            ? "bg-gray-100 dark:bg-white/10"
+                            : isRecording
                                 ? "bg-gradient-to-b from-rose-400 to-rose-600 shadow-rose-500/40"
                                 : "bg-gradient-to-b from-indigo-500 to-purple-600 shadow-indigo-500/40 hover:scale-[1.05]"
-                        }`}
+                            }`}
                     >
                         <div className="w-full h-full rounded-full border border-white/20 flex flex-col items-center justify-center text-white">
                             {isProcessing ? (

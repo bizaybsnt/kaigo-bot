@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Mic, Activity, Clock, CheckCircle2, ChevronRight, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Mic, Activity, Clock, CheckCircle2, ChevronRight } from "lucide-react";
+import type { IAgoraRTCClient, ILocalAudioTrack } from "agora-rtc-sdk-ng";
 
 type Report = {
   id: string;
@@ -14,8 +15,23 @@ type Report = {
 
 export default function Dashboard() {
   const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [reports, setReports] = useState<Report[]>([
+  const [transcript, setTranscript] = useState("");
+  const clientRef = useRef<IAgoraRTCClient | null>(null);
+  const micRef = useRef<ILocalAudioTrack | null>(null);
+
+  // Agora STT Refs
+  const sttTaskIdRef = useRef<string | null>(null);
+
+  // TEN Framework Chunking Refs
+  type TextDataChunk = { message_id: string; part_index: number; total_parts: number; content: string; };
+  const messageCache = useRef<Record<string, TextDataChunk[]>>({});
+  const transcriptRef = useRef("");
+  const interimRef = useRef("");
+
+  const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID ?? "e7f6e9aeecf14b2ba10e3f40be9f56e7";
+  const channel = process.env.NEXT_PUBLIC_AGORA_CHANNEL ?? "test";
+  const token = process.env.NEXT_PUBLIC_AGORA_TOKEN ?? null;
+  const [reports] = useState<Report[]>([
     {
       id: "1",
       patientName: "Tanaka-san",
@@ -34,30 +50,152 @@ export default function Dashboard() {
     },
   ]);
 
-  const simulateKaigoBotResponse = () => {
-    if (isRecording) {
-      // Stop recording, start processing
-      setIsRecording(false);
-      setIsProcessing(true);
+  const base64ToUtf8 = (base64: string): string => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return new TextDecoder("utf-8").decode(bytes);
+  };
 
-      // Simulate LLM processing time
-      setTimeout(() => {
-        setIsProcessing(false);
-        const newReport: Report = {
-          id: Math.random().toString(),
-          patientName: "Suzuki-san",
-          time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          foodIntake: "80%",
-          medication: "Blood pressure medication",
-          observations: "Seems a bit more tired than usual today.",
-        };
-        setReports([newReport, ...reports]);
-      }, 2500);
-    } else {
-      // Start recording
-      setIsRecording(true);
+  const reconstructMessage = (chunks: TextDataChunk[]) => {
+    return chunks.sort((a, b) => a.part_index - b.part_index).map((c) => c.content).join("");
+  };
+
+  const handleStreamMessage = (uid: number, payload: Uint8Array) => {
+    try {
+      const ascii = String.fromCharCode(...new Uint8Array(payload));
+      const [message_id, partIndexStr, totalPartsStr, content] = ascii.split("|");
+
+      const part_index = parseInt(partIndexStr, 10);
+      const total_parts = totalPartsStr === "???" ? -1 : parseInt(totalPartsStr, 10);
+      if (total_parts === -1) return;
+
+      const chunkData: TextDataChunk = { message_id, part_index, total_parts, content };
+
+      if (!messageCache.current[message_id]) {
+        messageCache.current[message_id] = [];
+        setTimeout(() => {
+          if (messageCache.current[message_id]?.length !== total_parts) {
+            delete messageCache.current[message_id];
+          }
+        }, 5000);
+      }
+
+      messageCache.current[message_id].push(chunkData);
+
+      if (messageCache.current[message_id].length === total_parts) {
+        const completeBase64 = reconstructMessage(messageCache.current[message_id]);
+        const jsonStr = base64ToUtf8(completeBase64);
+        const { is_final, text, data_type } = JSON.parse(jsonStr);
+
+        if (data_type === "text" || data_type === "transcribe") {
+          if (is_final) {
+            transcriptRef.current = (transcriptRef.current + " " + text).trim();
+            interimRef.current = "";
+          } else {
+            interimRef.current = text;
+          }
+          setTranscript((transcriptRef.current + " " + interimRef.current).trim());
+        }
+
+        delete messageCache.current[message_id];
+      }
+    } catch (e) {
+      console.error("Stream message decode error:", e);
     }
   };
+
+  const startAgoraSTT = async () => {
+    try {
+      const res = await fetch("/api/agora/stt/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelName: channel }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`Failed to start STT: ${res.status} - ${errorData.details || res.statusText}`);
+      }
+      const data = await res.json();
+      sttTaskIdRef.current = data.taskId;
+    } catch (error) {
+      console.error("Error starting Agora STT:", error);
+    }
+  };
+
+  const stopAgoraSTT = async () => {
+    if (!sttTaskIdRef.current) return;
+    try {
+      await fetch("/api/agora/stt/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: sttTaskIdRef.current
+        }),
+      });
+      sttTaskIdRef.current = null;
+    } catch (error) {
+      console.error("Error stopping Agora STT:", error);
+    }
+  };
+
+  const startAgora = async () => {
+    const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
+    if (!clientRef.current) {
+      clientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+      clientRef.current.on("stream-message", handleStreamMessage);
+    }
+    await clientRef.current.join(appId, channel, token || null, null);
+    micRef.current = await AgoraRTC.createMicrophoneAudioTrack();
+    await clientRef.current.publish([micRef.current]);
+  };
+
+  const stopAgora = async () => {
+    if (clientRef.current) {
+      if (micRef.current) {
+        try {
+          await clientRef.current.unpublish([micRef.current]);
+        } catch { }
+        try {
+          micRef.current.close();
+        } catch { }
+        micRef.current = null;
+      }
+      try {
+        await clientRef.current.leave();
+      } catch { }
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      setIsRecording(false);
+      await stopAgoraSTT();
+      await stopAgora();
+    } else {
+      setTranscript("");
+      transcriptRef.current = "";
+      interimRef.current = "";
+      setIsRecording(true);
+      try {
+        await startAgora();
+        await startAgoraSTT();
+      } catch (e) {
+        console.error(e);
+        setIsRecording(false);
+        await stopAgora();
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopAgoraSTT();
+      stopAgora();
+    };
+  }, []);
 
   return (
     <div className="space-y-8 pb-32">
@@ -87,29 +225,21 @@ export default function Dashboard() {
 
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <button
-                onClick={simulateKaigoBotResponse}
-                disabled={isProcessing}
+                onClick={toggleRecording}
                 className={`relative group bg-white text-indigo-600 rounded-full pl-4 pr-6 py-3 font-medium flex items-center justify-center gap-3 transition-all duration-300 hover:shadow-lg hover:shadow-white/20 hover:scale-105 active:scale-95 disabled:opacity-80 disabled:hover:scale-100 ${isRecording ? "ring-4 ring-rose-500/50" : ""
                   }`}
               >
-                {/* Recording Pulse Animation */}
                 {isRecording && (
                   <span className="absolute -inset-1 rounded-full border-2 border-rose-500 animate-ping opacity-30"></span>
                 )}
 
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isRecording ? "bg-rose-100 text-rose-500" : "bg-indigo-50 text-indigo-500"
                   }`}>
-                  {isProcessing ? (
-                    <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-                  ) : (
-                    <Mic className={`w-5 h-5 ${isRecording ? "animate-pulse" : ""}`} />
-                  )}
+                  <Mic className={`w-5 h-5 ${isRecording ? "animate-pulse" : ""}`} />
                 </div>
-                {isProcessing
-                  ? "Extracting Data..."
-                  : isRecording
-                    ? "Listening... Tap to stop"
-                    : "Tap to Speak"
+                {isRecording
+                  ? "Listening... Tap to stop"
+                  : "Tap to Speak"
                 }
               </button>
 
@@ -123,6 +253,12 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+            {transcript && (
+              <div className="mt-6 bg-white/10 rounded-xl p-4 border border-white/20 text-white">
+                <div className="text-sm font-medium mb-2">Transcript</div>
+                <div className="text-white/90 whitespace-pre-wrap">{transcript}</div>
+              </div>
+            )}
           </div>
 
           <div className="hidden md:flex flex-col items-center bg-black/20 backdrop-blur-md rounded-2xl p-4 min-w-[200px] border border-white/10">

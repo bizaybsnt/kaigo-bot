@@ -100,7 +100,7 @@ export default function PatientsPage() {
 
                             <div className="flex flex-col bg-indigo-50/50 dark:bg-indigo-500/5 p-3 rounded-xl border border-indigo-100 dark:border-indigo-500/10">
                                 <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                                    <HeartPulse className="w-3 h-3" /> Today's Notes
+                                    <HeartPulse className="w-3 h-3" /> Today&apos;s Notes
                                 </span>
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{patient.notes}</span>
                                 <span className="text-xs text-gray-400 mt-2 text-right">Last checked: {patient.lastCheck}</span>

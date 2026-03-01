@@ -1,14 +1,19 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Mic, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { Mic, ArrowLeft, Loader2, CheckCircle2, User } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { IAgoraRTCClient, ILocalAudioTrack } from "agora-rtc-sdk-ng";
 import { agora } from "./stt-message";
 
 export default function RecordPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+
+    const patientName = searchParams.get("name") ?? null;
+    const patientRoom = searchParams.get("room") ?? null;
+
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isDone, setIsDone] = useState(false);
@@ -198,33 +203,60 @@ export default function RecordPage() {
 
     if (isDone) {
         return (
-            <div className="min-h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
+            <div className="min-h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300 px-4">
                 <div className="w-24 h-24 bg-green-100 dark:bg-green-900/40 rounded-full flex items-center justify-center mb-6">
                     <CheckCircle2 className="w-12 h-12 text-green-500" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Report Logged!</h2>
                 <p className="text-gray-500 text-center max-w-sm mb-8">
-                    The voice snippet has been processed and saved securely as a structured report for Suzuki-san.
+                    The voice log has been saved{patientName ? ` for ${patientName}` : ""}.
                 </p>
                 <div className="w-full max-w-sm bg-gray-50 dark:bg-black/30 p-4 rounded-xl border border-gray-100 dark:border-white/10 mb-8 max-h-48 overflow-y-auto">
                     <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Final STT Transcript</h3>
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{transcript || "No transcript recorded"}</p>
                 </div>
-                <button
-                    onClick={() => router.push("/")}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-semibold shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
-                >
-                    Return to Dashboard
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+                    <button
+                        onClick={() => router.push("/patients")}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-4 rounded-2xl font-semibold shadow-lg shadow-indigo-500/30 transition-all active:scale-95"
+                    >
+                        Back to Patients
+                    </button>
+                    <button
+                        onClick={() => router.push("/")}
+                        className="flex-1 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-gray-300 px-6 py-4 rounded-2xl font-semibold transition-all active:scale-95 hover:bg-gray-50 dark:hover:bg-white/5"
+                    >
+                        Dashboard
+                    </button>
+                </div>
             </div>
         );
     }
 
     return (
         <div className="flex flex-col h-[calc(100vh-140px)] relative">
-            <Link href="/" className="inline-flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white font-medium mb-8 shrink-0">
-                <ArrowLeft className="w-5 h-5 mr-2" /> Back
+            {/* Back link */}
+            <Link
+                href={patientName ? "/patients" : "/"}
+                className="inline-flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white font-medium mb-6 shrink-0"
+            >
+                <ArrowLeft className="w-5 h-5 mr-2" />
+                {patientName ? "Back to Patients" : "Back"}
             </Link>
+
+            {/* Patient context banner */}
+            {patientName && (
+                <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl px-4 py-3 mb-6 shrink-0">
+                    <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center shrink-0">
+                        <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">Recording for</p>
+                        <p className="text-base font-bold text-gray-900 dark:text-white truncate">{patientName}</p>
+                        {patientRoom && <p className="text-xs text-gray-500">Room {patientRoom}</p>}
+                    </div>
+                </div>
+            )}
 
             <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center pb-20">
                 <h2 className="text-xl font-medium text-gray-600 dark:text-gray-300 mb-12">

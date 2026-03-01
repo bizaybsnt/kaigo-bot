@@ -21,9 +21,9 @@ export default function BottomNavBar() {
                     <span className="text-[10px] font-medium">Home</span>
                 </Link>
 
-                {/* Center Floating Action Button (FAB) */}
+                {/* Center Floating Action Button — goes to Patients to pick who to log for */}
                 <div className="relative -top-6">
-                    <Link href="/record">
+                    <Link href="/patients">
                         <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 p-1 flex items-center justify-center shadow-xl shadow-indigo-500/30 active:scale-95 transition-transform hover:scale-105">
                             <div className="w-full h-full bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full flex items-center justify-center border border-white/20">
                                 <Mic className="w-8 h-8 text-white drop-shadow-md" />

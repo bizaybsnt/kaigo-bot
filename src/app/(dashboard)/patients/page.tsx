@@ -1,4 +1,5 @@
-import { Users, AlertCircle, HeartPulse, Activity } from "lucide-react";
+import { Users, AlertCircle, HeartPulse, Activity, Mic } from "lucide-react";
+import Link from "next/link";
 
 type Patient = {
     id: string;
@@ -54,6 +55,12 @@ const dummyPatients: Patient[] = [
     },
 ];
 
+function statusColors(status: Patient["todayStatus"]) {
+    if (status === "Stable") return "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300";
+    if (status === "Requires Attention") return "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300";
+    return "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300";
+}
+
 export default function PatientsPage() {
     return (
         <div className="space-y-6 pb-24 md:pb-6">
@@ -69,45 +76,57 @@ export default function PatientsPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {dummyPatients.map((patient) => (
-                    <div key={patient.id} className="bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl p-6 shadow-sm hover:shadow-lg hover:shadow-indigo-500/5 transition-all group">
-                        <div className="flex justify-between items-start mb-4">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 rounded-full flex items-center justify-center border border-indigo-200 dark:border-indigo-800">
-                                    <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">{patient.name}</h3>
-                                    <p className="text-sm text-gray-500">Room {patient.room} • {patient.age} yrs</p>
-                                </div>
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${patient.todayStatus === "Stable"
-                                    ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300"
-                                    : patient.todayStatus === "Requires Attention"
-                                        ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
-                                        : "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300"
-                                }`}>
-                                {patient.todayStatus === "Requires Attention" && <AlertCircle className="w-3 h-3" />}
-                                {patient.todayStatus}
-                            </span>
-                        </div>
+                {dummyPatients.map((patient) => {
+                    const recordUrl = `/record?patientId=${patient.id}&name=${encodeURIComponent(patient.name)}&room=${encodeURIComponent(patient.room)}`;
 
-                        <div className="space-y-3">
-                            <div className="flex flex-col">
-                                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Condition</span>
-                                <span className="text-sm text-gray-800 dark:text-gray-200">{patient.condition}</span>
-                            </div>
-
-                            <div className="flex flex-col bg-indigo-50/50 dark:bg-indigo-500/5 p-3 rounded-xl border border-indigo-100 dark:border-indigo-500/10">
-                                <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                                    <HeartPulse className="w-3 h-3" /> Today&apos;s Notes
+                    return (
+                        <div key={patient.id} className="bg-white/70 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl p-6 shadow-sm hover:shadow-lg hover:shadow-indigo-500/5 transition-all group flex flex-col gap-4">
+                            {/* Patient header */}
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 rounded-full flex items-center justify-center border border-indigo-200 dark:border-indigo-800">
+                                        <Users className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{patient.name}</h3>
+                                        <p className="text-sm text-gray-500">Room {patient.room} · {patient.age} yrs</p>
+                                    </div>
+                                </div>
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 ${statusColors(patient.todayStatus)}`}>
+                                    {patient.todayStatus === "Requires Attention" && <AlertCircle className="w-3 h-3" />}
+                                    {patient.todayStatus}
                                 </span>
-                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{patient.notes}</span>
-                                <span className="text-xs text-gray-400 mt-2 text-right">Last checked: {patient.lastCheck}</span>
                             </div>
+
+                            {/* Patient details */}
+                            <div className="space-y-3">
+                                <div className="flex flex-col">
+                                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Condition</span>
+                                    <span className="text-sm text-gray-800 dark:text-gray-200">{patient.condition}</span>
+                                </div>
+
+                                <div className="flex flex-col bg-indigo-50/50 dark:bg-indigo-500/5 p-3 rounded-xl border border-indigo-100 dark:border-indigo-500/10">
+                                    <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                                        <HeartPulse className="w-3 h-3" /> Today&apos;s Notes
+                                    </span>
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{patient.notes}</span>
+                                    <span className="text-xs text-gray-400 mt-2 text-right">Last checked: {patient.lastCheck}</span>
+                                </div>
+                            </div>
+
+                            {/* Log Visit button */}
+                            <Link
+                                href={recordUrl}
+                                className="mt-auto flex items-center justify-center gap-3 w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 active:scale-[0.98] transition-all shadow-lg shadow-indigo-500/20 text-white font-semibold text-base"
+                            >
+                                <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                                    <Mic className="w-4 h-4" />
+                                </div>
+                                Log Visit
+                            </Link>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

@@ -1,15 +1,28 @@
-import { Bell, Search, Mic } from "lucide-react";
+"use client";
+
+import { Bell, Search, Menu, Mic } from "lucide-react";
+import { useSidebar } from "@/contexts/SidebarContext";
 
 export default function Header() {
+    const { toggle } = useSidebar();
+
     return (
         <header className="h-20 px-8 flex items-center justify-between bg-white/40 dark:bg-black/40 backdrop-blur-xl border-b border-white/20 dark:border-white/10 sticky top-0 z-10 w-full">
-            <div className="flex-1 max-w-md relative hidden md:block">
-                <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                    type="text"
-                    placeholder="Search patients, reports..."
-                    className="w-full bg-white/50 dark:bg-white/5 border border-white/20 dark:border-white/10 rounded-full py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium placeholder:text-gray-400 dark:text-gray-200"
-                />
+            <div className="flex items-center gap-4 flex-1">
+                <button
+                    onClick={toggle}
+                    className="p-2 -ml-2 sm:hidden rounded-lg hover:bg-white/50 dark:hover:bg-white/10 text-gray-600 dark:text-gray-300 transition-colors"
+                >
+                    <Menu className="w-6 h-6" />
+                </button>
+                <div className="flex-1 max-w-md relative hidden md:block">
+                    <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Search patients, reports..."
+                        className="w-full bg-white/50 dark:bg-white/5 border border-white/20 dark:border-white/10 rounded-full py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-medium placeholder:text-gray-400 dark:text-gray-200"
+                    />
+                </div>
             </div>
 
             <div className="flex items-center gap-4 sm:gap-6 ml-auto">

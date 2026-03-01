@@ -14,6 +14,7 @@ export default function RecordPage() {
     const [isDone, setIsDone] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [transcript, setTranscript] = useState("");
+    const [sttError, setSttError] = useState<string | null>(null);
 
     const clientRef = useRef<IAgoraRTCClient | null>(null);
     const micRef = useRef<ILocalAudioTrack | null>(null);
@@ -31,8 +32,11 @@ export default function RecordPage() {
     const token = process.env.NEXT_PUBLIC_AGORA_TOKEN ?? null;
 
     const handleStreamMessage = (uid: number, payload: Uint8Array) => {
+        console.log("[STT] stream-message from uid:", uid, "payload bytes:", payload.length);
         try {
             const msg = agora.audio.stt.Text.decode(payload);
+            console.log("[STT] decoded msg:", JSON.stringify(msg));
+
             // Wait for words array
             if (!msg.words || msg.words.length === 0) return;
 
@@ -44,38 +48,38 @@ export default function RecordPage() {
                 if (word.isFinal) {
                     isFinal = true;
                 }
-                currentText += word.text; // Agora languages usually include spaces inside text if needed
+                currentText += word.text;
             });
 
             if (isFinal) {
-                transcriptRef.current = (transcriptRef.current + currentText).trim();
+                transcriptRef.current = (transcriptRef.current + " " + currentText).trim();
                 interimRef.current = "";
             } else {
                 interimRef.current = currentText;
             }
 
-            setTranscript((transcriptRef.current + " " + interimRef.current).trim());
+            const full = (transcriptRef.current + " " + interimRef.current).trim();
+            console.log("[STT] transcript update:", full);
+            setTranscript(full);
         } catch (e) {
-            console.error("Stream message decode error:", e);
+            console.error("[STT] stream message decode error:", e);
         }
     };
 
-    const startAgoraSTT = async () => {
-        try {
-            const res = await fetch("/api/agora/stt/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ channelName: channel }),
-            });
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}));
-                throw new Error(`Failed to start STT: ${res.status} - ${errorData.details || res.statusText}`);
-            }
-            const data = await res.json();
-            sttTaskIdRef.current = data.taskId;
-        } catch (error) {
-            console.error("Error starting Agora STT:", error);
+    const startAgoraSTT = async (userUid: string) => {
+        const res = await fetch("/api/agora/stt/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ channelName: channel, userUid }),
+        });
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            const msg = `STT start failed (${res.status}): ${errorData.details || errorData.error || res.statusText}`;
+            throw new Error(msg);
         }
+        const data = await res.json();
+        sttTaskIdRef.current = data.taskId;
+        console.log("[STT] started, taskId:", data.taskId);
     };
 
     const stopAgoraSTT = async () => {
@@ -94,13 +98,15 @@ export default function RecordPage() {
         }
     };
 
-    const startAgora = async () => {
+    const startAgora = async (): Promise<string> => {
         const { default: AgoraRTC } = await import("agora-rtc-sdk-ng");
         if (!clientRef.current) {
             clientRef.current = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
             clientRef.current.on("stream-message", handleStreamMessage);
         }
-        await clientRef.current.join(appId, channel, token || null, null);
+        // join() returns the assigned UID — needed so we can tell the STT bot which UID to subscribe to
+        const assignedUid = await clientRef.current.join(appId, channel, token || null, null);
+        console.log("[Agora RTC] joined channel, uid:", assignedUid);
         micRef.current = await AgoraRTC.createMicrophoneAudioTrack();
         await clientRef.current.publish([micRef.current]);
 
@@ -121,6 +127,8 @@ export default function RecordPage() {
                 }
             }
         }, 100);
+
+        return String(assignedUid);
     };
 
     const stopAgora = async () => {
@@ -165,14 +173,16 @@ export default function RecordPage() {
         } else {
             // Start recording
             setTranscript("");
+            setSttError(null);
             transcriptRef.current = "";
             interimRef.current = "";
             setIsRecording(true);
             try {
-                await startAgora();
-                await startAgoraSTT();
-            } catch (e) {
-                console.error(e);
+                const uid = await startAgora();
+                await startAgoraSTT(uid);
+            } catch (e: any) {
+                console.error("[STT] setup error:", e);
+                setSttError(e?.message ?? "Failed to start recording");
                 setIsRecording(false);
                 await stopAgora();
             }
@@ -253,6 +263,15 @@ export default function RecordPage() {
                         </div>
                     </button>
                 </div>
+
+                {/* STT Error */}
+                {sttError && (
+                    <div className="w-full px-4 mb-4">
+                        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 text-center">
+                            {sttError}
+                        </div>
+                    </div>
+                )}
 
                 {/* Live Transcript Box */}
                 <div className="h-32 w-full px-6 overflow-y-auto">

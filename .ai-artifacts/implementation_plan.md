@@ -1,33 +1,26 @@
-# Fix Agora Gateway Server Error
+# Implement STT on Mobile Record View
 
-The `CAN_NOT_GET_GATEWAY_SERVER` error (or general connection failure) in Agora usually occurs when the selected App ID has the "App Certificate" enabled, which mandates that a valid temporary or server-generated Token is provided when joining a channel. Currently, the token is hardcoded to `null` in `src/app/(dashboard)/page.tsx`.
+The mobile navigation bar features a prominent audio button that launches a full-screen recording interface (`/record`). Currently, this page uses a dummy `setInterval` hook to simulate transcription.
 
-Since you mentioned you can provide the token in the `.env` file, we will update the application to read the Token and Channel Name from environment variables.
-
-## User Review Required
-
-> [!IMPORTANT]
-> Since we are using an environment variable for the token, you will need to generate a **Temporary Token** from your Agora Console (Project Management -> Generate Temp Token).
-> Note that Temp Tokens expire in 24 hours. For production, a token server is required. But for a hackathon, pasting the temp token in the `.env` file works perfectly!
+We will replace this fake behaviour with the real Agora STT integration by porting the logic implemented on the desktop dashboard into this mobile view.
 
 ## Proposed Changes
 
 ### Frontend Configuration
 
-#### [MODIFY] src/app/(dashboard)/page.tsx
-- Read `NEXT_PUBLIC_AGORA_TOKEN` from `process.env`.
-- Read `NEXT_PUBLIC_AGORA_CHANNEL` from `process.env` (defaulting to `"test"` if not provided, since tokens are tied to specific channels).
-- Pass this dynamically loaded token to `clientRef.current.join()`.
-
-### Environment Configuration
-
-#### [MODIFY] .env
-- Add `NEXT_PUBLIC_AGORA_TOKEN=` placeholder.
-- Add `NEXT_PUBLIC_AGORA_CHANNEL="test"` placeholder.
+#### [MODIFY] src/app/(dashboard)/record/page.tsx
+- **Imports**: Add required imports `useRef` and types `IAgoraRTCClient`, `ILocalAudioTrack` from `agora-rtc-sdk-ng`.
+- **State & Refs**: Add the tracking variables (`clientRef`, `micRef`, `transcriptRef`, `sttTaskIdRef`, etc.) required for Agora session management and TEN Framework message parsing.
+- **Agora Logic**: Integrate `startAgora`, `stopAgora`, `startAgoraSTT`, and `stopAgoraSTT` helper functions parsing base64 stream messaging data directly into the component.
+- **Transcription Action**: Modify the `toggleRecording` (previously `simulateKaigoBotResponse`) to hook into these real functions, stripping away the `useEffect` that fakes the transcript.
+- **Transcript Display**: The actual STT texts will replace the fake words arrays and dynamically update the `<p>` container under the _Live Transcript Box_.
 
 ## Verification Plan
 
 ### Manual Verification
-1. I will apply these code changes.
-2. I will prompt you to generate a Temporary Token from the Agora Console for the channel `"test"` and paste it as `NEXT_PUBLIC_AGORA_TOKEN` in your `.env` file.
-3. You will check the web application and click the "Tap to Speak" button to verify that it successfully connects to the Agora channel without the `CAN_NOT_GET_GATEWAY_SERVER` error.
+1. Open the project in a browser.
+2. Use Chrome DevTools Device Mode (or a small window) to trigger the `sm:hidden` CSS media queries and reveal the mobile bottom nav.
+3. Tap the central Microphone Action Button to navigate to the `/record` page.
+4. Tap the massive "Tap to start recording" button.
+5. Speak, verify that real-time transcription appears.
+6. Tap the button again to stop. Ensure the fake loading state and final "Report Logged!" interface is preserved.

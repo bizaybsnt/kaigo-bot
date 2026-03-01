@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, Activity, Clock, CheckCircle2, ChevronRight } from "lucide-react";
 import type { IAgoraRTCClient, ILocalAudioTrack } from "agora-rtc-sdk-ng";
+import { agora } from "./record/stt-message";
 
 type Report = {
   id: string;
@@ -22,9 +23,6 @@ export default function Dashboard() {
   // Agora STT Refs
   const sttTaskIdRef = useRef<string | null>(null);
 
-  // TEN Framework Chunking Refs
-  type TextDataChunk = { message_id: string; part_index: number; total_parts: number; content: string; };
-  const messageCache = useRef<Record<string, TextDataChunk[]>>({});
   const transcriptRef = useRef("");
   const interimRef = useRef("");
 
@@ -50,58 +48,29 @@ export default function Dashboard() {
     },
   ]);
 
-  const base64ToUtf8 = (base64: string): string => {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return new TextDecoder("utf-8").decode(bytes);
-  };
-
-  const reconstructMessage = (chunks: TextDataChunk[]) => {
-    return chunks.sort((a, b) => a.part_index - b.part_index).map((c) => c.content).join("");
-  };
-
   const handleStreamMessage = (uid: number, payload: Uint8Array) => {
     try {
-      const ascii = String.fromCharCode(...new Uint8Array(payload));
-      const [message_id, partIndexStr, totalPartsStr, content] = ascii.split("|");
+      const msg = agora.audio.stt.Text.decode(payload);
+      if (!msg.words || msg.words.length === 0) return;
 
-      const part_index = parseInt(partIndexStr, 10);
-      const total_parts = totalPartsStr === "???" ? -1 : parseInt(totalPartsStr, 10);
-      if (total_parts === -1) return;
+      let isFinal = false;
+      let currentText = "";
 
-      const chunkData: TextDataChunk = { message_id, part_index, total_parts, content };
-
-      if (!messageCache.current[message_id]) {
-        messageCache.current[message_id] = [];
-        setTimeout(() => {
-          if (messageCache.current[message_id]?.length !== total_parts) {
-            delete messageCache.current[message_id];
-          }
-        }, 5000);
-      }
-
-      messageCache.current[message_id].push(chunkData);
-
-      if (messageCache.current[message_id].length === total_parts) {
-        const completeBase64 = reconstructMessage(messageCache.current[message_id]);
-        const jsonStr = base64ToUtf8(completeBase64);
-        const { is_final, text, data_type } = JSON.parse(jsonStr);
-
-        if (data_type === "text" || data_type === "transcribe") {
-          if (is_final) {
-            transcriptRef.current = (transcriptRef.current + " " + text).trim();
-            interimRef.current = "";
-          } else {
-            interimRef.current = text;
-          }
-          setTranscript((transcriptRef.current + " " + interimRef.current).trim());
+      msg.words.forEach(word => {
+        if (word.isFinal) {
+          isFinal = true;
         }
+        currentText += word.text;
+      });
 
-        delete messageCache.current[message_id];
+      if (isFinal) {
+        transcriptRef.current = (transcriptRef.current + currentText).trim();
+        interimRef.current = "";
+      } else {
+        interimRef.current = currentText;
       }
+
+      setTranscript((transcriptRef.current + " " + interimRef.current).trim());
     } catch (e) {
       console.error("Stream message decode error:", e);
     }

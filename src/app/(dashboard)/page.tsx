@@ -82,7 +82,7 @@ export default function Dashboard() {
               <Mic className="w-6 h-6" /> Kaigo-Bot Auto Report
             </h2>
             <p className="text-indigo-100 max-w-lg mb-6 leading-relaxed">
-              Just tap the mic and speak naturally. For example: "Suzuki-san ate 80% of his lunch and took his blood pressure medication..."
+              Just tap the mic and speak naturally. For example: &quot;Suzuki-san ate 80% of his lunch and took his blood pressure medication...&quot;
             </p>
 
             <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -138,7 +138,7 @@ export default function Dashboard() {
       {/* Reports Section */}
       <div>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Today's Reports</h3>
+          <h3 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Today&apos;s Reports</h3>
           <button className="text-sm font-medium text-indigo-600 dark:text-indigo-400 flex items-center hover:text-indigo-700 transition-colors">
             View All <ChevronRight className="w-4 h-4 ml-1" />
           </button>
